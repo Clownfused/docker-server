@@ -56,9 +56,9 @@ systemctl enable docker
 docker run -d \
 --name nginx \
 -p 80:80 -p 443:443 \
--v /etc/nginx/conf.d  \
--v /etc/nginx/vhost.d \
--v /usr/share/nginx/html \
+-v $config/nginx:/etc/nginx/conf.d  \
+-v $config/nginx:/etc/nginx/vhost.d \
+-v $config/nginx/html:/usr/share/nginx/html \
 -v $config/nginx/keys:/etc/nginx/certs:ro \
 nginx
 
@@ -70,8 +70,7 @@ docker run -d \
 --volumes-from nginx \
 -v $config/nginx/nginx.tmpl:/etc/docker-gen/templates/nginx.tmpl:ro \
 -v /var/run/docker.sock:/tmp/docker.sock:ro \
-jwilder/docker-gen \
--notify-sighup nginx -watch -only-exposed -wait 5s:30s /etc/docker-gen/templates/nginx.tmpl /etc/nginx/conf.d/default.conf
+jwilder/docker-gen -notify-sighup nginx -watch -only-exposed -wait 5s:30s /etc/docker-gen/templates/nginx.tmpl /etc/nginx/conf.d/default.conf
 
 # Nginx-letsencrypt
 docker run -d \
@@ -187,23 +186,13 @@ docker run -d -i \
 -e LETSENCRYPT_EMAIL=$email \
 rogueosb/plexrequestsnet
 
-# CrashPlan
-docker run -d \
---name crashplan \
--h $HOSTNAME \
--e TZ=$timezone \
--p 4242:4242 -p 4243:4243 \
--v $config/crashplan:/var/crashplan \
--v $media:/media \
--v $config:/docker \
-jrcs/crashplan:latest
-
 # Install htpasswd for basic authentication setup
 
 apt-get install -y apache2-utils
 
 # Setup systemd and basic authentication for each container
 
+mkdir -p $config/nginx/htpasswd
 for d in $config/* ; do
 dir=$(basename $d)
 cat > /etc/systemd/system/$dir.service << EOF
