@@ -54,33 +54,16 @@ systemctl enable docker
 
 # Nginx
 docker run -d \
---name nginx \
--p 80:80 -p 443:443 \
--v $config/nginx:/etc/nginx/conf.d  \
--v $config/nginx:/etc/nginx/vhost.d \
--v $config/nginx/html:/usr/share/nginx/html \
--v $config/nginx/keys:/etc/nginx/certs:ro \
-nginx
-
-curl https://raw.githubusercontent.com/jwilder/nginx-proxy/master/nginx.tmpl > $config/nginx/nginx.tmpl
-
-# Nginx-gen
-docker run -d \
---name nginx-gen \
---volumes-from nginx \
--v $config/nginx/nginx.tmpl:/etc/docker-gen/templates/nginx.tmpl:ro \
--v /var/run/docker.sock:/tmp/docker.sock:ro \
-jwilder/docker-gen -notify-sighup nginx -watch -only-exposed -wait 5s:30s /etc/docker-gen/templates/nginx.tmpl /etc/nginx/conf.d/default.conf
-
-# Nginx-letsencrypt
-docker run -d \
---name nginx-letsencrypt \
--e "NGINX_DOCKER_GEN_CONTAINER=nginx-gen" \
--e "ACME_CA_URI=https://acme-staging.api.letsencrypt.org/directory" \
---volumes-from nginx \
--v $config/nginx/keys:/etc/nginx/certs:rw \
--v /var/run/docker.sock:/var/run/docker.sock:ro \
-jrcs/letsencrypt-nginx-proxy-companion
+--privileged \
+--name=nginx \
+-p 80:80 \
+-p 443:443 \
+-e EMAIL=$email \
+-e URL=$domain \
+-e SUBDOMAINS=www  \
+-e TZ=$timezone \
+-v $config/nginx/:/config:rw \
+aptalca/nginx-letsencrypt
 
 # Plex
 docker run -d \
@@ -102,9 +85,6 @@ docker run -d \
 -e PGID=$gid -e PUID=$uid  \
 -e TZ=$timezone \
 -p 5050:5050 \
--e VIRTUAL_HOST=couchpotato.$domain \
--e LETSENCRYPT_HOST=couchpotato.$domain \
--e LETSENCRYPT_EMAIL=$email \
 linuxserver/couchpotato
 
 # Sonarr
@@ -116,9 +96,6 @@ docker run -d \
 -v $config/sonarr:/config \
 -v $media:/media \
 -v $downloads:/downloads \
--e VIRTUAL_HOST=sonarr.$domain \
--e LETSENCRYPT_HOST=sonarr.$domain \
--e LETSENCRYPT_EMAIL=$email \
 linuxserver/sonarr
 
 # PlexPy
@@ -129,9 +106,6 @@ docker run -d \
 -e PGID=$gid -e PUID=$uid  \
 -e TZ=$timezone \
 -p 8181:8181 \
--e VIRTUAL_HOST=plexpy.$domain \
--e LETSENCRYPT_HOST=plexpy.$domain \
--e LETSENCRYPT_EMAIL=$email \
 linuxserver/plexpy
 
 # SABnzbd
@@ -142,9 +116,6 @@ docker run -d \
 -e PGID=$gid -e PUID=$uid \
 -e TZ=$timezone \
 -p 8080:8080 -p 9090:9090 \
--e VIRTUAL_HOST=sabnzbd.$domain \
--e LETSENCRYPT_HOST=sabnzbd.$domain \
--e LETSENCRYPT_EMAIL=$email \
 linuxserver/sabnzbd
 
 # Deluge
@@ -157,9 +128,6 @@ docker run -d \
 -e TZ=$timezone \
 -v $downloads:/downloads \
 -v $config/deluge:/config \
--e VIRTUAL_HOST=deluge.$domain \
--e LETSENCRYPT_HOST=deluge.$domain \
--e LETSENCRYPT_EMAIL=$email \
 linuxserver/deluge
 
 # Jackett
@@ -170,9 +138,6 @@ docker run -d \
 -e PGID=$gid -e PUID=$uid \
 -e TZ=$timezone \
 -p 9117:9117 \
--e VIRTUAL_HOST=jackett.$domain \
--e LETSENCRYPT_HOST=jackett.$domain \
--e LETSENCRYPT_EMAIL=$email \
 linuxserver/jackett
 
 # PlexRequests.NET
@@ -181,18 +146,10 @@ docker run -d -i \
 --restart=always \
 -p 3579:3579 \
 -v $config/plexrequests:/config \
--e VIRTUAL_HOST=plexrequests.$domain \
--e LETSENCRYPT_HOST=plexrequests.$domain \
--e LETSENCRYPT_EMAIL=$email \
 rogueosb/plexrequestsnet
 
-# Install htpasswd for basic authentication setup
+# Setup systemd service for each container
 
-apt-get install -y apache2-utils
-
-# Setup systemd and basic authentication for each container
-
-mkdir -p $config/nginx/htpasswd
 for d in $config/* ; do
 dir=$(basename $d)
 cat > /etc/systemd/system/$dir.service << EOF
@@ -211,36 +168,91 @@ WantedBy=default.target
 EOF
 systemctl daemon-reload
 systemctl enable $dir
-htpasswd -b -c $config/nginx/htpasswd/$dir.$domain $user $password
 done
-    
-# Setup systemd for nginx-letsencrypt as it does not have a folder in /opt
-    
-cat > /etc/systemd/system/nginx-letsencrypt.service << EOF
-[Unit]
-Description=nginx-letsencrypt container
-Requires=docker.service
-After=docker.service
 
-[Service]
-Restart=always
-ExecStart=/usr/bin/docker start -a nginx-letsencrypt
-ExecStop=/usr/bin/docker stop -t 2 nginx-letsencrypt
+# Install htpasswd and setup basic authentication
 
-[Install]
-WantedBy=default.target
+apt-get install -y apache2-utils
+htpasswd -b -c $config/nginx/.htpasswd $user $password
+
+# Setup Nginx reverse proxying
+
+systemctl stop nginx
+rm $config/nginx/nginx/site-confs/default
+ip=$(ifconfig ens18 2>/dev/null|awk '/inet addr:/ {print $2}'|sed 's/addr://')
+cat > $config/nginx/nginx/site-confs/default << EOF
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name $domain www.$domain;
+    return 301 https://\$server_name\$request_uri;
+    }
+ 
+server {
+    listen 443 ssl http2 default_server;
+	listen [::]:443 ssl http2 default_server;
+    ssl_certificate /config/keys/fullchain.pem;
+    ssl_certificate_key /config/keys/privkey.pem;
+    ssl_dhparam /config/nginx/dhparams.pem;
+    ssl_ciphers 'ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-DSS-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-DSS-AES128-SHA256:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:DHE-RSA-AES256-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:AES128-SHA:AES256-SHA:AES:CAMELLIA:DES-CBC3-SHA:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!aECDH:!EDH-DSS-DES-CBC3-SHA:!EDH-RSA-DES-CBC3-SHA:!KRB5-DES-CBC3-SHA';
+    ssl_prefer_server_ciphers on;
+    auth_basic "Restricted";
+    auth_basic_user_file /config/.htpasswd;
+ 
+    location /sonarr {
+        proxy_pass http://$ip:8989;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        }
+
+    location /deluge {
+        proxy_pass http://$ip:8112/;
+        proxy_set_header X-Deluge-Base "/deluge/";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        }
+
+    location /request {
+        auth_basic off;
+        proxy_pass http://$ip:3579;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        }
+
+    location /sabnzbd {
+        proxy_pass http://$ip:8080;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        }
+
+    location /couchpotato {
+        proxy_pass http://$ip:5050;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        }
+
+    location /plexpy {
+        proxy_pass http://$ip:8181;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        }
+
+    location /jackett/ {
+        proxy_pass http://$ip:9117/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        }
+ 
+}
 EOF
-systemctl daemon-reload
-systemctl enable nginx-letsencrypt
-
-# Remove basic authentication for PlexRequests.NET
-
-rm $config/nginx/htpasswd/plexrequests.$domain
-
-# Restart Nginx and Let's Encrypt
-
-systemctl restart nginx
-docker restart nginx-letsencrypt
+systemctl start nginx
 
 # Set permissions
 
