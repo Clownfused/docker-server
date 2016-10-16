@@ -18,4 +18,3 @@ Installed docker containers:
 - library/nginx
 - jwilder/docker-gen
 - jrcs/letsencrypt-nginx-proxy-companion
-- jrcs/crashplan
