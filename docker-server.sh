@@ -140,13 +140,24 @@ docker run -d \
 -p 9117:9117 \
 linuxserver/jackett
 
-# PlexRequests.NET
-docker run -d -i \
+# PlexRequests
+docker run -d \
 --name=plexrequests \
---restart=always \
--p 3579:3579 \
+-v /etc/localtime:/etc/localtime:ro \
 -v $config/plexrequests:/config \
-rogueosb/plexrequestsnet
+-e PGID=$gid -e PUID=$uid  \
+-e URL_BASE=/request \
+-p 3000:3000 \
+linuxserver/plexrequests
+
+# Set URL base for reverse proxying
+
+docker stop couchpotato jackett plexpy sonarr
+sed -i 's#url_base =#url_base = /couchpotato#' $config/couchpotato/config.ini
+sed -i 's#"BasePathOverride": null#"BasePathOverride": "/jackett"#' $config/jackett/Jackett/ServerConfig.json
+sed -i 's#http_root = ""#http_root = /plexpy#' $config/plexpy/config.ini
+sed -i 's#<UrlBase></UrlBase>#<UrlBase>/sonarr</UrlBase>#' $config/sonarr/config.xml
+docker start couchpotato jackett plexpy sonarr
 
 # Setup systemd service for each container
 
@@ -190,7 +201,7 @@ server {
  
 server {
     listen 443 ssl http2 default_server;
-	listen [::]:443 ssl http2 default_server;
+    listen [::]:443 ssl http2 default_server;
     ssl_certificate /config/keys/fullchain.pem;
     ssl_certificate_key /config/keys/privkey.pem;
     ssl_dhparam /config/nginx/dhparams.pem;
@@ -198,14 +209,16 @@ server {
     ssl_prefer_server_ciphers on;
     auth_basic "Restricted";
     auth_basic_user_file /config/.htpasswd;
- 
+
+    # Sonarr
     location /sonarr {
         proxy_pass http://$ip:8989;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         }
-
+    
+    # Deluge
     location /deluge {
         proxy_pass http://$ip:8112/;
         proxy_set_header X-Deluge-Base "/deluge/";
@@ -214,14 +227,16 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         }
 
+    # PlexRequests
     location /request {
         auth_basic off;
-        proxy_pass http://$ip:3579;
+        proxy_pass http://$ip:3000;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         }
 
+    # SABnzbd
     location /sabnzbd {
         proxy_pass http://$ip:8080;
         proxy_set_header Host \$host;
@@ -229,6 +244,7 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         }
 
+    # CouchPotato
     location /couchpotato {
         proxy_pass http://$ip:5050;
         proxy_set_header Host \$host;
@@ -236,6 +252,7 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         }
 
+    # PlexPy
     location /plexpy {
         proxy_pass http://$ip:8181;
         proxy_set_header Host \$host;
@@ -243,6 +260,7 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         }
 
+    # Jackett
     location /jackett/ {
         proxy_pass http://$ip:9117/;
         proxy_set_header Host \$host;
