@@ -15,4 +15,4 @@ Installed docker containers:
 - linuxserver/jackett
 - linuxserver/sabnzbd
 - linuxserver/deluge
-- rogueosb/plexrequestsnet
+- linuxserver/plexrequests
