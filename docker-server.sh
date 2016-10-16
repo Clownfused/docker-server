@@ -169,6 +169,8 @@ services:
 EOF
 chown $user:$user docker-compose.yml
 docker-compose up -d
+echo "Pausing for 30s to allow config files to be created..."
+sleep 30
 
 # Set URL base for reverse proxying
 
