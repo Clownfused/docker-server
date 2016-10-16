@@ -3,7 +3,7 @@
 # Check if running as root
 
 if [ "$(id -u)" != "0" ]; then
-echo "This script must be run as root" 1>&2
+echo "This script must be run with sudo" 1>&2
 exit 1
 fi
 
@@ -31,155 +31,153 @@ uid=$(id -u $user)
 gid=$(id -g $user)
 timezone=$(cat /etc/timezone)
 
-# Install docker
+# Install Docker & Docker Compose
 
-apt-get update
-apt-get upgrade -y
-apt-get install -y apt-transport-https ca-certificates
-apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D
-echo "deb https://apt.dockerproject.org/repo ubuntu-xenial main" > /etc/apt/sources.list.d/docker.list
-apt-get update
-apt-get purge -y lxc-docker
-apt-cache policy docker-engine
-apt-get update
-apt-get install -y linux-image-extra-$(uname -r) linux-image-extra-virtual
-apt-get update
-apt-get install -y docker-engine
-service docker start
-groupadd docker
-usermod -aG docker $user
-systemctl enable docker
+curl -s https://gist.githubusercontent.com/luislobo/2dc3de67b7f2ddc623c239dff36962a0/raw/9f24ff62eb7ada78718f5a805b54c0295c248692/install_latest_docker_compose.sh | bash /dev/stdin
 
 # Create and start containers
 
-# Nginx
-docker run -d \
---privileged \
---name=nginx \
--p 80:80 \
--p 443:443 \
--e EMAIL=$email \
--e URL=$domain \
--e SUBDOMAINS=www  \
--e TZ=$timezone \
--v $config/nginx/:/config:rw \
-aptalca/nginx-letsencrypt
-
-# Plex
-docker run -d \
---name=plex \
---net=host \
--e VERSION=latest \
--e PUID=$uid -e PGID=$gid \
--e TZ=$timezone \
--v $config/plex:/config \
--v $media:/media \
-linuxserver/plex
-
-# CouchPotato
-docker run -d \
---name=couchpotato \
--v $config/couchpotato:/config \
--v $downloads:/downloads \
--v $media:/media \
--e PGID=$gid -e PUID=$uid  \
--e TZ=$timezone \
--p 5050:5050 \
-linuxserver/couchpotato
-
-# Sonarr
-docker run -d \
---name sonarr \
--p 8989:8989 \
--e PUID=$uid -e PGID=$gid \
--v /dev/rtc:/dev/rtc:ro \
--v $config/sonarr:/config \
--v $media:/media \
--v $downloads:/downloads \
-linuxserver/sonarr
-
-# PlexPy
-docker run -d \
---name=plexpy \
--v $config/plexpy:/config \
--v $config/plex/Library/Application\ Support/Plex\ Media\ Server/Logs:/logs:ro \
--e PGID=$gid -e PUID=$uid  \
--e TZ=$timezone \
--p 8181:8181 \
-linuxserver/plexpy
-
-# SABnzbd
-docker run -d \
---name=sabnzbd \
--v $config/sabnzbd:/config \
--v $downloads:/downloads \
--e PGID=$gid -e PUID=$uid \
--e TZ=$timezone \
--p 8080:8080 -p 9090:9090 \
-linuxserver/sabnzbd
-
-# Deluge
-docker run -d \
---name deluge \
--p 8112:8112 \
--p 58846:58846 \
--p 58946:58946 \
--e PUID=$uid -e PGID=$gid \
--e TZ=$timezone \
--v $downloads:/downloads \
--v $config/deluge:/config \
-linuxserver/deluge
-
-# Jackett
-docker run -d \
---name=jackett \
--v $config/jackett:/config \
--v $downloads:/downloads \
--e PGID=$gid -e PUID=$uid \
--e TZ=$timezone \
--p 9117:9117 \
-linuxserver/jackett
-
-# PlexRequests
-docker run -d \
---name=plexrequests \
--v /etc/localtime:/etc/localtime:ro \
--v $config/plexrequests:/config \
--e PGID=$gid -e PUID=$uid  \
--e URL_BASE=/request \
--p 3000:3000 \
-linuxserver/plexrequests
+cat > docker-compose.yml << EOF
+version: '2'
+services:
+  nginx:
+    container_name: nginx
+    image: aptalca/nginx-letsencrypt
+    restart: always
+    privileged: true
+    volumes:
+      - $config/nginx:/config
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - EMAIL=$email
+      - URL=$domain
+      - SUBDOMAINS=www
+      - TZ=$timezone
+  plex:
+    container_name: plex
+    image: linuxserver/plex
+    restart: always
+    network_mode: "host"
+    volumes:
+      - $config/plex:/config
+      - $media:/media
+    environment:
+      - VERSION=latest
+      - PUID=$uid
+      - PGID=$gid
+      - TZ=$timezone
+  couchpotato:
+    container_name: couchpotato
+    image: linuxserver/couchpotato
+    restart: always
+    volumes:
+      - $config/couchpotato:/config
+      - $media:/media
+      - $downloads:/downloads
+    ports:
+      - "5050:5050"
+    environment:
+      - PUID=$uid  
+      - PGID=$gid
+      - TZ=$timezone
+  sonarr:
+    container_name: sonarr
+    image: linuxserver/sonarr
+    restart: always
+    volumes:
+      - $config/sonarr:/config
+      - $media:/media
+      - $downloads:/downloads
+      - /dev/rtc:/dev/rtc:ro
+    ports:
+      - "8989:8989"
+    environment:
+      - PUID=$uid  
+      - PGID=$gid
+      - TZ=$timezone
+  plexpy:
+    container_name: plexpy
+    image: linuxserver/plexpy
+    restart: always
+    volumes:
+      - $config/plexpy:/config
+      - $config/plex/Library/Application\ Support/Plex\ Media\ Server/Logs:/logs:ro
+    ports:
+      - "8181:8181"
+    environment:
+      - PUID=$uid  
+      - PGID=$gid
+      - TZ=$timezone
+  sabnzbd:
+    container_name: sabnzbd
+    image: linuxserver/sabnzbd
+    restart: always
+    volumes:
+      - $config/sabnzbd:/config
+      - $downloads:/downloads
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    environment:
+      - PUID=$uid
+      - PGID=$gid
+      - TZ=$timezone
+  deluge:
+    container_name: deluge
+    image: linuxserver/deluge
+    restart: always
+    volumes:
+      - $config/deluge:/config
+      - $downloads:/downloads
+    ports:
+      - "8112:8112"
+      - "58846:58846"
+      - "58946:58946"
+    environment:
+      - PUID=$uid
+      - PGID=$gid
+      - TZ=$timezone
+  jackett:
+    container_name: jackett
+    image: linuxserver/jackett
+    restart: always
+    volumes:
+      - $config/jackett:/config
+      - $downloads:/downloads
+    ports:
+      - "9117:9117"
+    environment:
+      - PUID=$uid
+      - PGID=$gid
+      - TZ=$timezone
+  plexrequests:
+    container_name: plexrequests
+    image: linuxserver/plexrequests
+    restart: always
+    volumes:
+      - $config/plexrequests:/config
+      - $downloads:/downloads
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "3000:3000"
+    environment:
+      - PUID=$uid
+      - PGID=$gid
+      - URL_BASE=/request
+EOF
+chown $user:$user docker-compose.yml
+docker-compose up -d
 
 # Set URL base for reverse proxying
 
-docker stop couchpotato jackett plexpy sonarr
+docker-compose stop couchpotato jackett plexpy sonarr
 sed -i 's#url_base =#url_base = /couchpotato#' $config/couchpotato/config.ini
 sed -i 's#"BasePathOverride": null#"BasePathOverride": "/jackett"#' $config/jackett/Jackett/ServerConfig.json
 sed -i 's#http_root = ""#http_root = /plexpy#' $config/plexpy/config.ini
 sed -i 's#<UrlBase></UrlBase>#<UrlBase>/sonarr</UrlBase>#' $config/sonarr/config.xml
-docker start couchpotato jackett plexpy sonarr
-
-# Setup systemd service for each container
-
-for d in $config/* ; do
-dir=$(basename $d)
-cat > /etc/systemd/system/$dir.service << EOF
-[Unit]
-Description=$dir container
-Requires=docker.service
-After=docker.service
-
-[Service]
-Restart=always
-ExecStart=/usr/bin/docker start -a $dir
-ExecStop=/usr/bin/docker stop -t 2 $dir
-
-[Install]
-WantedBy=default.target
-EOF
-systemctl daemon-reload
-systemctl enable $dir
-done
+docker-compose start couchpotato jackett plexpy sonarr
 
 # Install htpasswd and setup basic authentication
 
@@ -188,7 +186,7 @@ htpasswd -b -c $config/nginx/.htpasswd $user $password
 
 # Setup Nginx reverse proxying
 
-systemctl stop nginx
+docker-compose stop nginx
 rm $config/nginx/nginx/site-confs/default
 ip=$(ifconfig ens18 2>/dev/null|awk '/inet addr:/ {print $2}'|sed 's/addr://')
 cat > $config/nginx/nginx/site-confs/default << EOF
@@ -270,7 +268,7 @@ server {
  
 }
 EOF
-systemctl start nginx
+docker-compose start nginx
 
 # Set permissions
 
