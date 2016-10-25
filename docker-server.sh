@@ -168,7 +168,7 @@ services:
       - PGID=$gid
       - URL_BASE=/request
 EOF
-chown $user:$user docker-compose.yml
+chown $user:$user $HOME/docker-server/docker-compose.yml
 docker-compose up -d
 echo "Pausing for 30s to allow config files to be created..."
 sleep 30
