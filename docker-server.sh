@@ -38,7 +38,7 @@ usermod -aG docker $user
 
 # Create and start containers
 
-cat > docker-compose.yml << EOF
+cat > $HOME/docker-server/docker-compose.yml << EOF
 version: '2'
 services:
   nginx:
