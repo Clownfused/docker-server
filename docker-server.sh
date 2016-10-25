@@ -275,6 +275,6 @@ docker-compose start nginx
 
 # Set permissions
 
-chown -R $user:$user $config $media $downloads
+chown -R $user:$user $config
 
 echo "Done!"
