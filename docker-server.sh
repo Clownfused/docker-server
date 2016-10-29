@@ -38,7 +38,7 @@ usermod -aG docker $user
 
 # Create and start containers
 
-cat > $HOME/docker-server/docker-compose.yml << EOF
+cat > /home/$user/docker-server/docker-compose.yml << EOF
 version: '2'
 services:
   nginx:
@@ -170,7 +170,8 @@ services:
       - PGID=$gid
       - URL_BASE=/request
 EOF
-chown $user:$user $HOME/docker-server/docker-compose.yml
+chown $user:$user /home/$user/docker-server/docker-compose.yml
+cd /home/$user/docker-server/
 docker-compose up -d
 echo "Pausing for 30s to allow config files to be created..."
 sleep 30
