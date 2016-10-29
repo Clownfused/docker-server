@@ -43,7 +43,7 @@ version: '2'
 services:
   nginx:
     container_name: nginx
-    image: aptalca/nginx-letsencrypt
+    image: lsiodev/letsencrypt #aptalca/nginx-letsencrypt
     restart: always
     privileged: true
     volumes:
@@ -55,6 +55,8 @@ services:
       - EMAIL=$email
       - URL=$domain
       - SUBDOMAINS=www
+      - PUID=$uid
+      - PGID=$gid
       - TZ=$timezone
   plex:
     container_name: plex
