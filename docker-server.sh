@@ -106,7 +106,7 @@ services:
     restart: always
     volumes:
       - $config/plexpy:/config
-      - $config/plex/Library/Application\ Support/Plex\ Media\ Server/Logs:/logs:ro
+      - $config/plex/Library/Application Support/Plex Media Server/Logs:/logs:ro
     ports:
       - "8181:8181"
     environment:
