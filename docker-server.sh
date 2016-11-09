@@ -43,7 +43,7 @@ version: '2'
 services:
   nginx:
     container_name: nginx
-    image: lsiodev/letsencrypt #aptalca/nginx-letsencrypt
+    image: linuxserver/letsencrypt
     restart: always
     privileged: true
     volumes:
