@@ -10,7 +10,7 @@ When the script finishes running, log out and back in and wait a few minutes to 
 Installed docker containers:
 - linuxserver/letsencrypt
 - linuxserver/plex
-- linuxserver/couchpotato [ URL: www.yourdomain.com/coucpotato ]
+- linuxserver/couchpotato [ URL: www.yourdomain.com/couchpotato ]
 - linuxserver/sonarr [ URL: www.yourdomain.com/sonarr ]
 - linuxserver/plexpy [ URL: www.yourdomain.com/plexpy ]
 - linuxserver/jackett [ URL: www.yourdomain.com/jackett ]
