@@ -8,7 +8,7 @@ git clone https://github.com/aberg83/docker-server.git && sudo bash ~/docker-ser
 When the script finishes running, log out and back in and wait a few minutes to let your DH parameters and SSL certificate generate. You can monitor this by typing 'docker-compose logs -f nginx' within the 'docker-server' folder. Once Nginx has fully started, you will be able to access the apps at www.yourdomain.com/appname. Your browser will prompt you for the login credentials you set within the script.
 
 Installed docker containers:
-- lsiodev/letsencrypt
+- linuxserver/letsencrypt
 - linuxserver/plex
 - linuxserver/couchpotato
 - linuxserver/sonarr
